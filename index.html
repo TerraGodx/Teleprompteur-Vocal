@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Téléprompteur Vocal — Anti-Bégaiement</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@300;400;500&display=swap');
+
+  :root {
+    --bg: #0a0c10;
+    --surface: #12151c;
+    --surface2: #191d27;
+    --border: #1e2333;
+    --accent: #f5a623;
+    --accent2: #7c6af5;
+    --green: #4af59a;
+    --text: #dde3f0;
+    --muted: #4a5268;
+    --highlight-bg: rgba(245,166,35,0.18);
+    --highlight-color: #f5d423;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Ambient glow top */
+  body::before {
+    content: '';
+    position: fixed;
+    top: -300px; left: 50%; transform: translateX(-50%);
+    width: 800px; height: 600px;
+    background: radial-gradient(ellipse, rgba(245,166,35,0.06) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* HEADER */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    z-index: 10;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .logo {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.4rem;
+    font-weight: 400;
+  }
+
+  .logo span { color: var(--accent); font-style: italic; }
+
+  .header-sub {
+    font-size: 0.6rem;
+    color: var(--muted);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 100px;
+    padding: 6px 14px;
+    font-size: 0.68rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+  }
+
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+
+  .status-dot.running { background: var(--green); box-shadow: 0 0 8px var(--green); animation: blink 1s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* CONTROLS BAR */
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-wrap: wrap;
+    position: relative;
+    z-index: 10;
+  }
+
+  .ctrl-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .ctrl-label {
+    font-size: 0.6rem;
+    color: var(--muted);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+    width: 110px;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px rgba(245,166,35,0.5);
+  }
+
+  .ctrl-value {
+    font-size: 0.72rem;
+    color: var(--accent);
+    min-width: 28px;
+    text-align: right;
+  }
+
+  .btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    padding: 8px 18px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--surface2);
+    color: var(--text);
+  }
+
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn.primary {
+    background: var(--accent);
+    color: #0a0c10;
+    border-color: var(--accent);
+    font-weight: 500;
+    padding: 8px 24px;
+  }
+
+  .btn.primary:hover { background: #f5d423; box-shadow: 0 0 20px rgba(245,166,35,0.4); }
+
+  .btn.stop {
+    background: none;
+    border-color: #f55a5a;
+    color: #f55a5a;
+  }
+
+  .btn.stop:hover { background: rgba(245,90,90,0.1); }
+
+  .divider {
+    width: 1px;
+    height: 28px;
+    background: var(--border);
+  }
+
+  /* FONT SIZE */
+  .font-btns {
+    display: flex;
+    gap: 4px;
+  }
+
+  .font-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    cursor: pointer;
+    border-radius: 4px;
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem;
+    transition: all 0.2s;
+  }
+
+  .font-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+
+  /* TABS */
+  .tabs {
+    display: flex;
+    gap: 0;
+    padding: 0 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: relative;
+    z-index: 10;
+    overflow-x: auto;
+  }
+
+  .tab {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 12px 18px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab:hover:not(.active) { color: var(--text); }
+
+  /* MAIN AREA */
+  .main {
+    display: flex;
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* TELEPROMPTER */
+  .teleprompter-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Gradient overlays top/bottom */
+  .teleprompter-wrap::before,
+  .teleprompter-wrap::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    height: 120px;
+    z-index: 5;
+    pointer-events: none;
+  }
+
+  .teleprompter-wrap::before {
+    top: 0;
+    background: linear-gradient(to bottom, var(--bg) 0%, transparent 100%);
+  }
+
+  .teleprompter-wrap::after {
+    bottom: 0;
+    background: linear-gradient(to top, var(--bg) 0%, transparent 100%);
+  }
+
+  /* Center line indicator */
+  .center-line {
+    position: absolute;
+    left: 0; right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 3px;
+    background: linear-gradient(to right, transparent, var(--accent), transparent);
+    opacity: 0.25;
+    z-index: 4;
+    pointer-events: none;
+  }
+
+  .teleprompter-scroll {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    padding: 0 10%;
+  }
+
+  .teleprompter-inner {
+    will-change: transform;
+    padding: 50vh 0;
+    transition: transform 0.1s linear;
+  }
+
+  .tp-text {
+    font-family: 'Playfair Display', serif;
+    font-size: 2.2rem;
+    line-height: 1.8;
+    color: rgba(221,227,240,0.35);
+    text-align: center;
+    letter-spacing: 0.01em;
+  }
+
+  .tp-text .word {
+    display: inline-block;
+    margin: 0 5px;
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 2px 4px;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .tp-text .word:hover { color: var(--text); }
+
+  .tp-text .word.done { color: rgba(221,227,240,0.2); }
+
+  .tp-text .word.current {
+    color: var(--highlight-color);
+    background: var(--highlight-bg);
+    box-shadow: 0 0 20px rgba(245,212,35,0.2);
+    transform: scale(1.05);
+  }
+
+  .tp-text .word.next { color: rgba(221,227,240,0.65); }
+
+  /* SIDEBAR */
+  .sidebar {
+    width: 300px;
+    border-left: 1px solid var(--border);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    z-index: 10;
+  }
+
+  .sidebar-section {
+    padding: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-title {
+    font-size: 0.6rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+
+  /* Text list */
+  .text-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  .text-item {
+    padding: 10px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 0.7rem;
+    color: var(--muted);
+    transition: all 0.2s;
+    line-height: 1.5;
+    background: var(--surface2);
+  }
+
+  .text-item:hover { border-color: var(--accent2); color: var(--text); }
+  .text-item.active { border-color: var(--accent); color: var(--accent); background: rgba(245,166,35,0.06); }
+
+  .text-item .text-title {
+    font-weight: 500;
+    margin-bottom: 3px;
+    color: inherit;
+  }
+
+  .text-item .text-preview {
+    font-size: 0.6rem;
+    opacity: 0.6;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Import */
+  textarea {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    line-height: 1.6;
+    padding: 12px;
+    resize: vertical;
+    min-height: 100px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  textarea:focus { border-color: var(--accent2); }
+
+  /* Stats */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .stat-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+  }
+
+  .stat-card .val {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.6rem;
+    color: var(--accent);
+    line-height: 1;
+  }
+
+  .stat-card .lbl {
+    font-size: 0.55rem;
+    color: var(--muted);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+
+  /* Progress bar */
+  .progress-bar {
+    width: 100%;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin-top: 14px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(to right, var(--accent2), var(--accent));
+    border-radius: 2px;
+    transition: width 0.3s;
+    width: 0%;
+  }
+
+  /* Tip */
+  .tip {
+    padding: 16px 20px;
+    border-left: 3px solid var(--accent2);
+    margin: 0 20px 20px;
+    background: rgba(124,106,245,0.05);
+    border-radius: 0 6px 6px 0;
+    font-size: 0.68rem;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+
+  .tip strong { color: var(--accent2); }
+
+  /* Keyboard hint */
+  .kbd-hint {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    padding: 10px 20px;
+    flex-wrap: wrap;
+  }
+
+  .kbd {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.6rem;
+    color: var(--muted);
+  }
+
+  .key {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 0.6rem;
+    color: var(--text);
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Panel tabs */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* Mobile */
+  @media (max-width: 700px) {
+    .sidebar { display: none; }
+    .tp-text { font-size: 1.5rem; }
+    .controls { padding: 12px 16px; }
+    .teleprompter-scroll { padding: 0 5%; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">Télé<span>prompteur</span> Vocal</div>
+    <div class="header-sub">Lecture rythmée · Anti-Bégaiement</div>
+  </div>
+  <div class="status-pill">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusLabel">En attente</span>
+  </div>
+</header>
+
+<div class="controls">
+  <!-- Speed -->
+  <div class="ctrl-group">
+    <span class="ctrl-label">Vitesse</span>
+    <input type="range" id="speedSlider" min="1" max="10" value="3" step="0.5">
+    <span class="ctrl-value" id="speedVal">3</span>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Font size -->
+  <div class="ctrl-group">
+    <span class="ctrl-label">Taille</span>
+    <div class="font-btns">
+      <button class="font-btn" id="fontMinus">A−</button>
+      <button class="font-btn" id="fontPlus">A+</button>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Controls -->
+  <button class="btn primary" id="playBtn">▶ Démarrer</button>
+  <button class="btn stop" id="stopBtn" style="display:none">⏹ Arrêter</button>
+  <button class="btn" id="resetBtn">↺ Réinitialiser</button>
+</div>
+
+<!-- Tabs for panels -->
+<div class="tabs">
+  <button class="tab active" data-tab="texts">📚 Textes prédéfinis</button>
+  <button class="tab" data-tab="import">✏️ Mon texte</button>
+  <button class="tab" data-tab="stats">📊 Statistiques</button>
+</div>
+
+<div class="main">
+
+  <!-- TELEPROMPTER -->
+  <div class="teleprompter-wrap">
+    <div class="center-line"></div>
+    <div class="teleprompter-scroll" id="tpScroll">
+      <div class="teleprompter-inner" id="tpInner">
+        <div class="tp-text" id="tpText"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <!-- Panel: Textes prédéfinis -->
+    <div class="sidebar-section panel active" id="panel-texts">
+      <div class="sidebar-title">📚 Textes d'exercice</div>
+      <div class="text-list" id="textList"></div>
+    </div>
+
+    <!-- Panel: Import -->
+    <div class="sidebar-section panel" id="panel-import">
+      <div class="sidebar-title">✏️ Importer mon texte</div>
+      <textarea id="customText" placeholder="Colle ou écris ton texte ici...&#10;&#10;Il s'affichera dans le téléprompteur."></textarea>
+      <button class="btn primary" style="margin-top:10px; width:100%" id="loadCustomBtn">Charger ce texte</button>
+    </div>
+
+    <!-- Panel: Stats -->
+    <div class="sidebar-section panel" id="panel-stats">
+      <div class="sidebar-title">📊 Session en cours</div>
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="val" id="statWords">0</div>
+          <div class="lbl">Mots lus</div>
+        </div>
+        <div class="stat-card">
+          <div class="val" id="statTime">0:00</div>
+          <div class="lbl">Durée</div>
+        </div>
+        <div class="stat-card">
+          <div class="val" id="statWpm">—</div>
+          <div class="lbl">Mots/min</div>
+        </div>
+        <div class="stat-card">
+          <div class="val" id="statPct">0%</div>
+          <div class="lbl">Progression</div>
+        </div>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+    </div>
+
+    <div class="tip" id="tipBox">
+      <strong>💡 Conseil :</strong> Laissez le texte défiler et prononcez chaque mot surligné. Ne rattrapez pas le défilement — adaptez votre rythme à lui.
+    </div>
+
+    <div class="kbd-hint">
+      <div class="kbd"><span class="key">Espace</span> Play/Pause</div>
+      <div class="kbd"><span class="key">↑↓</span> Vitesse</div>
+      <div class="kbd"><span class="key">R</span> Reset</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// --- DATA ---
+const TEXTS = [
+  {
+    title: "Souffle & fluidité",
+    text: "Je prends une grande inspiration avant de commencer à parler. Mon souffle est régulier et ma voix est posée. Chaque mot sort naturellement, sans effort, sans précipitation. Je fais confiance à ma voix et à mon rythme naturel. Parler est un plaisir que je redécouvre chaque jour."
+  },
+  {
+    title: "Confiance en soi",
+    text: "J'ai le droit de prendre mon temps pour m'exprimer. Ma parole a de la valeur et mérite d'être entendue. Je ne me juge pas, je progresse à mon propre rythme. Chaque phrase prononcée est une victoire, grande ou petite. Ma voix est unique et elle mérite de s'exprimer librement."
+  },
+  {
+    title: "Situations sociales",
+    text: "Bonjour, je m'appelle Marie et je suis ravie de vous rencontrer. Pourriez-vous me dire où se trouve la bibliothèque, s'il vous plaît ? Je voudrais commander un café et un croissant, merci beaucoup. Permettez-moi de vous expliquer mon projet en quelques mots. Je vous remercie pour votre patience et votre écoute."
+  },
+  {
+    title: "Phrases longues",
+    text: "Le matin, avant de commencer ma journée, je prends quelques instants pour respirer profondément et me concentrer sur ma respiration. Lorsque je parle avec quelqu'un, je maintiens un contact visuel bienveillant et je me rappelle que l'autre personne est là pour m'écouter. La pratique quotidienne, même quelques minutes, transforme progressivement la façon dont je m'exprime."
+  },
+  {
+    title: "Sons difficiles",
+    text: "Pierre prend part à la promenade près du parc. Bernard boit du bon bordeaux avec Bruno. Six serpents sifflent sous les feuilles séchées. Le lion dort dans la clairière lumineuse. Frédéric frotte fort le front du petit éléphant."
+  },
+  {
+    title: "Poésie douce",
+    text: "Le vent murmure entre les feuilles des arbres anciens. L'eau coule doucement sur les pierres lisses de la rivière. Le soleil se lève lentement derrière les collines bleues. Les oiseaux chantent leurs mélodies au petit matin. La vie est belle quand on prend le temps de la savourer."
+  },
+  {
+    title: "Téléphone & appels",
+    text: "Allô, bonjour, je souhaiterais parler au service client, s'il vous plaît. Je vous appelle concernant ma commande passée la semaine dernière. Mon numéro de référence est le zéro cinq sept trois deux. Pourriez-vous vérifier l'état de ma livraison, s'il vous plaît ? Je vous remercie de votre aide et vous souhaite une bonne journée."
+  },
+  {
+    title: "Lecture libre",
+    text: "Il était une fois, dans un village tranquille au bord d'une forêt enchantée, un jeune garçon qui rêvait de voyager. Chaque soir, il observait les étoiles depuis sa fenêtre et imaginait les pays lointains qu'il visiterait un jour. Un matin de printemps, il décida de partir à l'aventure, un sac sur le dos et le cœur plein d'espoir."
+  }
+];
+
+const TIPS = [
+  "Laissez votre regard légèrement en avance sur le mot actuel pour anticiper sans précipiter.",
+  "Si vous bloquez sur un mot, continuez à lire visuellement — votre voix rattrapera.",
+  "Réduisez la vitesse si vous sentez de la tension. La fluidité prime sur la rapidité.",
+  "Pratiquez 10 minutes par jour. La régularité est plus efficace que les longues sessions.",
+  "Essayez de chuchoter d'abord, puis augmentez progressivement le volume.",
+  "Respirez avant chaque nouvelle ligne. Le souffle soutient la parole.",
+];
+
+// --- STATE ---
+let currentText = TEXTS[0];
+let words = [];
+let currentWordIdx = 0;
+let isRunning = false;
+let scrollInterval = null;
+let timerInterval = null;
+let startTime = null;
+let wordsRead = 0;
+let fontSize = 2.2;
+let scrollPos = 0;
+let speed = 3;
+
+// --- DOM ---
+const tpText = document.getElementById('tpText');
+const tpInner = document.getElementById('tpInner');
+const tpScroll = document.getElementById('tpScroll');
+const playBtn = document.getElementById('playBtn');
+const stopBtn = document.getElementById('stopBtn');
+const resetBtn = document.getElementById('resetBtn');
+const speedSlider = document.getElementById('speedSlider');
+const speedVal = document.getElementById('speedVal');
+const statusDot = document.getElementById('statusDot');
+const statusLabel = document.getElementById('statusLabel');
+const progressFill = document.getElementById('progressFill');
+
+// --- RENDER TEXT ---
+function renderText(text) {
+  words = text.trim().split(/\s+/);
+  currentWordIdx = 0;
+  wordsRead = 0;
+  scrollPos = 0;
+  tpInner.style.transform = 'translateY(0px)';
+
+  tpText.innerHTML = words.map((w, i) =>
+    `<span class="word" data-i="${i}">${w}</span>`
+  ).join(' ');
+
+  // Click to jump
+  tpText.querySelectorAll('.word').forEach(el => {
+    el.addEventListener('click', () => {
+      currentWordIdx = parseInt(el.dataset.i);
+      wordsRead = currentWordIdx;
+      updateWordHighlight();
+      centerOnWord(currentWordIdx);
+    });
+  });
+
+  updateWordHighlight();
+  updateStats();
+}
+
+function updateWordHighlight() {
+  const wordEls = tpText.querySelectorAll('.word');
+  wordEls.forEach((el, i) => {
+    el.classList.remove('current', 'next', 'done');
+    if (i < currentWordIdx) el.classList.add('done');
+    else if (i === currentWordIdx) el.classList.add('current');
+    else if (i === currentWordIdx + 1) el.classList.add('next');
+  });
+
+  const pct = words.length > 0 ? Math.round((currentWordIdx / words.length) * 100) : 0;
+  progressFill.style.width = pct + '%';
+  document.getElementById('statPct').textContent = pct + '%';
+  document.getElementById('statWords').textContent = wordsRead;
+}
+
+function centerOnWord(idx) {
+  const wordEls = tpText.querySelectorAll('.word');
+  if (!wordEls[idx]) return;
+  const scrollH = tpScroll.offsetHeight;
+  const wordTop = wordEls[idx].offsetTop;
+  const target = wordTop - scrollH / 2 + wordEls[idx].offsetHeight / 2;
+  scrollPos = -target;
+  tpInner.style.transform = `translateY(${scrollPos}px)`;
+}
+
+// --- AUTO SCROLL ---
+let accumulator = 0;
+
+function startScrolling() {
+  if (scrollInterval) clearInterval(scrollInterval);
+
+  scrollInterval = setInterval(() => {
+    if (!isRunning) return;
+
+    const wordEls = tpText.querySelectorAll('.word');
+    if (currentWordIdx >= words.length) {
+      stop();
+      return;
+    }
+
+    // Advance word based on speed
+    accumulator += speed * 0.015;
+    if (accumulator >= 1) {
+      accumulator = 0;
+      currentWordIdx++;
+      wordsRead = currentWordIdx;
+      updateWordHighlight();
+      centerOnWord(currentWordIdx);
+    }
+  }, 50);
+}
+
+// --- PLAY / STOP / RESET ---
+function play() {
+  if (words.length === 0) renderText(currentText.text);
+  isRunning = true;
+  startTime = startTime || Date.now();
+
+  playBtn.style.display = 'none';
+  stopBtn.style.display = '';
+  statusDot.classList.add('running');
+  statusLabel.textContent = 'En lecture';
+
+  startScrolling();
+
+  timerInterval = timerInterval || setInterval(updateTimer, 1000);
+}
+
+function pause() {
+  isRunning = false;
+  clearInterval(scrollInterval);
+  scrollInterval = null;
+
+  playBtn.style.display = '';
+  playBtn.textContent = '▶ Reprendre';
+  stopBtn.style.display = 'none';
+  statusDot.classList.remove('running');
+  statusLabel.textContent = 'En pause';
+
+  // Random tip
+  const tip = TIPS[Math.floor(Math.random() * TIPS.length)];
+  document.getElementById('tipBox').innerHTML = `<strong>💡 Conseil :</strong> ${tip}`;
+}
+
+function stop() {
+  isRunning = false;
+  clearInterval(scrollInterval);
+  clearInterval(timerInterval);
+  scrollInterval = null;
+  timerInterval = null;
+
+  playBtn.style.display = '';
+  playBtn.textContent = '▶ Démarrer';
+  stopBtn.style.display = 'none';
+  statusDot.classList.remove('running');
+  statusLabel.textContent = isRunning ? 'En pause' : (currentWordIdx >= words.length && words.length > 0 ? '✓ Terminé' : 'Arrêté');
+}
+
+function reset() {
+  stop();
+  startTime = null;
+  currentWordIdx = 0;
+  wordsRead = 0;
+  accumulator = 0;
+  scrollPos = 0;
+  tpInner.style.transform = 'translateY(0px)';
+  document.getElementById('statTime').textContent = '0:00';
+  document.getElementById('statWpm').textContent = '—';
+  statusLabel.textContent = 'En attente';
+  renderText(currentText.text);
+}
+
+// --- TIMER ---
+function updateTimer() {
+  if (!startTime) return;
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  const m = Math.floor(elapsed / 60);
+  const s = elapsed % 60;
+  document.getElementById('statTime').textContent = `${m}:${s.toString().padStart(2,'0')}`;
+
+  if (elapsed > 5 && wordsRead > 0) {
+    const wpm = Math.round((wordsRead / elapsed) * 60);
+    document.getElementById('statWpm').textContent = wpm;
+  }
+}
+
+function updateStats() {
+  const pct = words.length > 0 ? Math.round((currentWordIdx / words.length) * 100) : 0;
+  progressFill.style.width = pct + '%';
+  document.getElementById('statPct').textContent = pct + '%';
+  document.getElementById('statWords').textContent = wordsRead;
+}
+
+// --- TEXT LIST ---
+function buildTextList() {
+  const list = document.getElementById('textList');
+  list.innerHTML = '';
+  TEXTS.forEach((t, i) => {
+    const el = document.createElement('div');
+    el.className = 'text-item' + (i === 0 ? ' active' : '');
+    el.innerHTML = `<div class="text-title">${t.title}</div><div class="text-preview">${t.text.substring(0, 60)}…</div>`;
+    el.addEventListener('click', () => {
+      document.querySelectorAll('.text-item').forEach(e => e.classList.remove('active'));
+      el.classList.add('active');
+      currentText = t;
+      stop();
+      startTime = null;
+      accumulator = 0;
+      renderText(t.text);
+    });
+    list.appendChild(el);
+  });
+}
+
+// --- EVENTS ---
+playBtn.addEventListener('click', () => {
+  if (isRunning) pause();
+  else play();
+});
+
+stopBtn.addEventListener('click', () => {
+  pause();
+});
+
+resetBtn.addEventListener('click', reset);
+
+speedSlider.addEventListener('input', e => {
+  speed = parseFloat(e.target.value);
+  speedVal.textContent = speed;
+  if (isRunning) startScrolling();
+});
+
+document.getElementById('fontPlus').addEventListener('click', () => {
+  fontSize = Math.min(4, fontSize + 0.2);
+  tpText.style.fontSize = fontSize + 'rem';
+});
+
+document.getElementById('fontMinus').addEventListener('click', () => {
+  fontSize = Math.max(1, fontSize - 0.2);
+  tpText.style.fontSize = fontSize + 'rem';
+});
+
+document.getElementById('loadCustomBtn').addEventListener('click', () => {
+  const txt = document.getElementById('customText').value.trim();
+  if (!txt) return;
+  currentText = { title: 'Mon texte', text: txt };
+  document.querySelectorAll('.text-item').forEach(e => e.classList.remove('active'));
+  stop();
+  startTime = null;
+  accumulator = 0;
+  renderText(txt);
+  // Switch to texts tab view
+  switchTab('texts');
+});
+
+// Tabs
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+});
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA') return;
+  if (e.code === 'Space') { e.preventDefault(); if (isRunning) pause(); else play(); }
+  if (e.code === 'KeyR') reset();
+  if (e.code === 'ArrowUp') { speedSlider.value = Math.min(10, speed + 0.5); speed = parseFloat(speedSlider.value); speedVal.textContent = speed; if(isRunning) startScrolling(); }
+  if (e.code === 'ArrowDown') { speedSlider.value = Math.max(1, speed - 0.5); speed = parseFloat(speedSlider.value); speedVal.textContent = speed; if(isRunning) startScrolling(); }
+});
+
+// --- INIT ---
+buildTextList();
+renderText(TEXTS[0].text);
+</script>
+</body>
+</html>
